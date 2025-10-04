@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Logged Out</title>
+    <style>
+        body {
+            font-family: sans-serif;
+        }
+        .container {
+            width: 300px;
+            margin: 100px auto;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2>Logged Out</h2>
+        <p>You have been successfully logged out.</p>
+        <a href="{% url 'login' %}">Login again</a>
+    </div>
+
+</body>
+</html>

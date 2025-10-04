@@ -17,7 +17,7 @@ class Profile(models.Model):
         return f"{self.user.username} - {self.get_user_type_display()}"
 
 class Student(models.Model):
-    profile = models.OneToOneField(Profile, on_delete=models.CASCADE)
+    profile = models.OneToOneField(Profile, on_delete=models.CASCADE, null=True)
     roll_no = models.CharField(max_length=50, unique=True)
     parents = models.ManyToManyField("Parent", related_name="children")
 
@@ -39,7 +39,8 @@ class Parent(models.Model):
 
 class Gatepass(models.Model):
     STATUS_CHOICES = [
-        ("PENDING", "Pending"),
+        ("PENDING_PARENT", "Pending Parent Approval"),
+        ("PENDING_WARDEN", "Pending Warden Approval"),
         ("APPROVED", "Approved"),
         ("REJECTED", "Rejected"),
         ("EXPIRED", "Expired"),
@@ -50,8 +51,8 @@ class Gatepass(models.Model):
     from_time = models.DateTimeField(default=timezone.now)
     to_time = models.DateTimeField(default=timezone.now)
     destination = models.CharField(max_length=255)
-    purpose = models.TextField()
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="PENDING")
+    purpose = models.CharField(max_length=255, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="PENDING_PARENT")
     created_at = models.DateTimeField(auto_now_add=True)
     # Gatepass request expires in 1 hour if not approved/rejected
     request_expires_at = models.DateTimeField(blank=True, null=True)

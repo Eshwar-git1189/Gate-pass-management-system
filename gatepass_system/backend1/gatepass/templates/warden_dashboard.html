@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Warden Dashboard</title>
+    <style>
+        body {
+            font-family: sans-serif;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        .approve-btn, .reject-btn {
+            padding: 5px 10px;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        .approve-btn {
+            background-color: #4CAF50;
+        }
+        .reject-btn {
+            background-color: #f44336;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Warden Dashboard</h1>
+    <h2>Pending Gatepasses</h2>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Student</th>
+                <th>Destination</th>
+                <th>Purpose</th>
+                <th>From</th>
+                <th>To</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for gatepass in gatepasses %}
+            <tr>
+                <td>{{ gatepass.student }}</td>
+                <td>{{ gatepass.destination }}</td>
+                <td>{{ gatepass.purpose }}</td>
+                <td>{{ gatepass.from_time }}</td>
+                <td>{{ gatepass.to_time }}</td>
+                <td>
+                    <form action="{% url 'warden-gatepass-action' gatepass.id 'approve' %}" method="post" style="display: inline;">
+                        {% csrf_token %}
+                        <button type="submit" class="approve-btn">Approve</button>
+                    </form>
+                    <form action="{% url 'warden-gatepass-action' gatepass.id 'reject' %}" method="post" style="display: inline;">
+                        {% csrf_token %}
+                        <button type="submit" class="reject-btn">Reject</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+</body>
+</html>

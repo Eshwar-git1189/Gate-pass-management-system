@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Security Dashboard</title>
+    <style>
+        body {
+            font-family: sans-serif;
+        }
+        .container {
+            width: 50%;
+            margin: 0 auto;
+        }
+        .search-form {
+            margin-bottom: 20px;
+        }
+        .gatepass-details {
+            border: 1px solid #ddd;
+            padding: 15px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Security Verification</h1>
+
+        <form method="get" class="search-form">
+            <input type="text" name="gatepass_id" placeholder="Enter Gatepass ID" style="width: 300px;">
+            <button type="submit">Search</button>
+        </form>
+
+        {% if gatepass %}
+            <div class="gatepass-details">
+                <h2>Gatepass Details</h2>
+                <p><strong>Student:</strong> {{ gatepass.student }}</p>
+                <p><strong>Destination:</strong> {{ gatepass.destination }}</p>
+                <p><strong>Status:</strong> {{ gatepass.get_status_display }}</p>
+                <p><strong>From:</strong> {{ gatepass.from_time }}</p>
+                <p><strong>To:</strong> {{ gatepass.to_time }}</p>
+                <p><strong>Actual Exit Time:</strong> {{ gatepass.actual_exit_time|default:"Not yet logged" }}</p>
+                <p><strong>Actual Entry Time:</strong> {{ gatepass.actual_entry_time|default:"Not yet logged" }}</p>
+
+                {% if gatepass.status == 'APPROVED' and not gatepass.actual_exit_time %}
+                    <form action="{% url 'security-log-time' gatepass.id 'exit' %}" method="post" style="display: inline;">
+                        {% csrf_token %}
+                        <button type="submit">Log Exit</button>
+                    </form>
+                {% endif %}
+
+                {% if gatepass.actual_exit_time and not gatepass.actual_entry_time %}
+                    <form action="{% url 'security-log-time' gatepass.id 'entry' %}" method="post" style="display: inline;">
+                        {% csrf_token %}
+                        <button type="submit">Log Entry</button>
+                    </form>
+                {% endif %}
+            </div>
+        {% elif request.GET.gatepass_id %}
+            <p>Gatepass not found.</p>
+        {% endif %}
+    </div>
+
+</body>
+</html>

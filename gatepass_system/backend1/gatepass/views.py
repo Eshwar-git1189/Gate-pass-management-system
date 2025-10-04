@@ -2,12 +2,36 @@ from rest_framework.permissions import IsAuthenticated, BasePermission
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, render, redirect
+from django.views.generic import View
 from .models import Student, Parent, Gatepass, Approval
 from .serializers import StudentSerializer, ParentSerializer, GatepassSerializer, ApprovalSerializer
 from django.core.mail import send_mail
 from django.urls import reverse
 from django.utils import timezone
+
+class StudentListCreateAPIView(generics.ListCreateAPIView):
+    queryset = Student.objects.all()
+    serializer_class = StudentSerializer
+    permission_classes = [IsAuthenticated]
+
+from django.contrib.auth.views import LoginView
+
+class UserLoginView(LoginView):
+    template_name = 'login.html'
+
+from django.shortcuts import redirect
+
+def redirect_after_login(request):
+    if request.user.is_authenticated:
+        if request.user.profile.user_type == 'STUDENT':
+            return redirect('student-gatepass-list')
+        elif request.user.profile.user_type == 'WARDEN':
+            return redirect('warden-dashboard')
+        elif request.user.profile.user_type == 'SECURITY':
+            return redirect('security-dashboard')
+    # Redirect to a default page if user is not authenticated or has no role
+    return redirect('login')
 
 class IsSecurity(BasePermission):
     """
@@ -15,6 +39,18 @@ class IsSecurity(BasePermission):
     """
     def has_permission(self, request, view):
         return request.user.is_authenticated and request.user.profile.user_type == 'SECURITY'
+
+class SecurityDashboardView(View):
+    def get(self, request):
+        gatepass_id = request.GET.get('gatepass_id')
+        gatepass = None
+        if gatepass_id:
+            try:
+                gatepass = Gatepass.objects.get(id=gatepass_id)
+            except (Gatepass.DoesNotExist, ValueError):
+                gatepass = None
+        return render(request, 'security_dashboard.html', {'gatepass': gatepass})
+
 # ----- Security APIs -----
 class SecurityGatepassDetailAPIView(generics.RetrieveAPIView):
     """
@@ -59,32 +95,63 @@ class WardenGatepassListAPIView(generics.ListAPIView):
     serializer_class = GatepassSerializer
     permission_classes = [IsAuthenticated, IsWarden]
 
-# ----- Student APIs -----
-class StudentListCreateAPIView(generics.ListCreateAPIView):
-    queryset = Student.objects.all()
-    serializer_class = StudentSerializer
+class WardenGatepassActionAPIView(APIView):
+    permission_classes = [IsAuthenticated, IsWarden]
 
-# ----- Gatepass APIs -----
-class GatepassListCreateAPIView(generics.ListCreateAPIView):
-    queryset = Gatepass.objects.all()
-    serializer_class = GatepassSerializer
-    permission_classes = [IsAuthenticated] # Ensure only logged-in users can create
+    def post(self, request, pk, action):
+        gatepass = get_object_or_404(Gatepass, pk=pk)
 
-    def perform_create(self, serializer):
-        # Automatically associate the gatepass with the logged-in student.
-        # This is more secure and correct.
-        gatepass = serializer.save(student=self.request.user.profile.student)
+        if gatepass.status != 'PENDING_WARDEN_APPROVAL':
+            return Response({"detail": "Gatepass is not pending warden approval."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Create Approval objects for all parents in sequence
+        if action == "approve":
+            gatepass.status = "APPROVED"
+        elif action == "reject":
+            gatepass.status = "REJECTED"
+        else:
+            return Response({"detail": "Invalid action."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Log the warden's action
+        gatepass.audit.append({
+            "action": f"Warden {action}d",
+            "user": request.user.username,
+            "timestamp": timezone.now().isoformat(),
+        })
+        gatepass.save()
+        return Response({"detail": f"Gatepass {action}d successfully."})
+
+
+# ----- Warden Views -----
+class WardenDashboardView(View):
+    def get(self, request):
+        pending_gatepasses = Gatepass.objects.filter(status='PENDING_WARDEN_APPROVAL').order_by('-created_at')
+        return render(request, 'warden_dashboard.html', {'gatepasses': pending_gatepasses})
+
+# ----- Student Views -----
+class StudentRequestView(View):
+    def get(self, request):
+        return render(request, 'student_request.html')
+
+    def post(self, request):
+        student = request.user.profile.student
+        gatepass = Gatepass.objects.create(
+            student=student,
+            destination=request.POST['destination'],
+            purpose=request.POST['purpose'],
+            from_time=request.POST['from_time'],
+            to_time=request.POST['to_time'],
+        )
+
         for i, parent in enumerate(gatepass.student.parents.all(), start=1):
             approval = Approval.objects.create(
                 gatepass=gatepass,
                 parent=parent,
                 order=i
             )
-            # If the parent has an email, send the notification
             if parent.email:
-                self.send_approval_email(approval, self.request)
+                self.send_approval_email(approval, request)
+
+        return redirect('student-gatepass-list')
 
     def send_approval_email(self, approval, request):
         """
@@ -124,6 +191,34 @@ This request will expire in one hour.
             fail_silently=False,
         )
 
+class StudentGatepassListView(View):
+    def get(self, request):
+        student = request.user.profile.student
+        gatepasses = Gatepass.objects.filter(student=student).order_by('-created_at')
+        return render(request, 'student_gatepass_list.html', {'gatepasses': gatepasses})
+
+# ----- Gatepass APIs -----
+class GatepassListCreateAPIView(generics.ListCreateAPIView):
+    queryset = Gatepass.objects.all()
+    serializer_class = GatepassSerializer
+    permission_classes = [IsAuthenticated] # Ensure only logged-in users can create
+
+    def perform_create(self, serializer):
+        # Automatically associate the gatepass with the logged-in student.
+        # This is more secure and correct.
+        gatepass = serializer.save(student=self.request.user.profile.student)
+
+        # Create Approval objects for all parents in sequence
+        for i, parent in enumerate(gatepass.student.parents.all(), start=1):
+            approval = Approval.objects.create(
+                gatepass=gatepass,
+                parent=parent,
+                order=i
+            )
+            # If the parent has an email, send the notification
+            if parent.email:
+                self.send_approval_email(approval, self.request)
+
 # ----- Approval APIs -----
 class ApprovalActionAPIView(APIView):
     """
@@ -152,7 +247,7 @@ class ApprovalActionAPIView(APIView):
         if approval.status == "REJECTED":
             gatepass.status = "REJECTED"
         elif all(a.status == "APPROVED" for a in gatepass.approvals.all()):
-            gatepass.status = "APPROVED"
+            gatepass.status = "PENDING_WARDEN_APPROVAL"
         gatepass.save()
 
         return Response({"detail": f"Gatepass {action}ed successfully."})

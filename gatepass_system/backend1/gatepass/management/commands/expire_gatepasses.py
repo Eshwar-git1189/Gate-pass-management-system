@@ -8,7 +8,10 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         now = timezone.now()
-        expired = Gatepass.objects.filter(status="PENDING", request_expires_at__lte=now)
+        expired = Gatepass.objects.filter(
+            status__in=["PENDING_PARENT", "PENDING_WARDEN"],
+            request_expires_at__lte=now
+        )
         count = 0
         for gp in expired:
             gp.status = "EXPIRED"

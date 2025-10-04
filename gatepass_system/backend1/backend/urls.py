@@ -22,6 +22,7 @@ from rest_framework.authtoken.views import obtain_auth_token
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('accounts/', include('django.contrib.auth.urls')), # <--- Add this
     path('api/', include('gatepass.urls')),  # <--- important
     path('api/token/', obtain_auth_token), # <-- Add this for login
 ]
