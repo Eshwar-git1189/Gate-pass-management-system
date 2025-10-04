@@ -1,0 +1,276 @@
+{% extends "base.html" %} {% load static %} {% block title %}Parent Dashboard{%
+endblock %} {% block content %}
+<div class="container mt-4">
+  <div class="row">
+    <div class="col-12">
+      <h2>Parent Dashboard</h2>
+
+      {% if pending_requests %}
+      <div class="card mb-4">
+        <div class="card-header bg-warning text-dark">
+          <h5 class="mb-0">Pending Approvals</h5>
+        </div>
+        <div class="card-body">
+          <div class="table-responsive">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Student</th>
+                  <th>Purpose</th>
+                  <th>Destination</th>
+                  <th>From</th>
+                  <th>To</th>
+                  <th>Expires In</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for gatepass in pending_requests %}
+                <tr id="request-{{ gatepass.id }}">
+                  <td>{{ gatepass.student.get_full_name }}</td>
+                  <td>{{ gatepass.purpose }}</td>
+                  <td>{{ gatepass.destination }}</td>
+                  <td>{{ gatepass.from_time|date:"M d, Y H:i" }}</td>
+                  <td>{{ gatepass.to_time|date:"M d, Y H:i" }}</td>
+                  <td>
+                    <span
+                      class="countdown"
+                      data-expires="{{ gatepass.request_expires_at|date:'c' }}"
+                    >
+                      {{ gatepass.request_expires_at|timeuntil }}
+                    </span>
+                  </td>
+                  <td>
+                    <div class="btn-group" role="group">
+                      <button
+                        class="btn btn-success btn-sm approval-btn"
+                        data-gatepass-id="{{ gatepass.id }}"
+                        data-action="approve"
+                      >
+                        <i class="bi bi-check-circle"></i> Approve
+                      </button>
+                      <button
+                        class="btn btn-danger btn-sm approval-btn"
+                        data-gatepass-id="{{ gatepass.id }}"
+                        data-action="reject"
+                      >
+                        <i class="bi bi-x-circle"></i> Reject
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      <div class="card">
+        <div class="card-header">
+          <h5 class="mb-0">All Gatepass Requests</h5>
+        </div>
+        <div class="card-body">
+          <div class="table-responsive">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Student</th>
+                  <th>Purpose</th>
+                  <th>Destination</th>
+                  <th>From</th>
+                  <th>To</th>
+                  <th>Status</th>
+                  <th>Created</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for gatepass in gatepasses %}
+                <tr>
+                  <td>{{ gatepass.student.get_full_name }}</td>
+                  <td>{{ gatepass.purpose }}</td>
+                  <td>{{ gatepass.destination }}</td>
+                  <td>{{ gatepass.from_time|date:"M d, Y H:i" }}</td>
+                  <td>{{ gatepass.to_time|date:"M d, Y H:i" }}</td>
+                  <td>
+                    <span class="badge bg-{{ gatepass.get_status_color }}">
+                      {{ gatepass.status }}
+                    </span>
+                  </td>
+                  <td>{{ gatepass.created_at|date:"M d, Y H:i" }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                  <td colspan="7" class="text-center">
+                    No gatepass requests found.
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {% if is_paginated %}
+      <nav aria-label="Page navigation" class="mt-4">
+        <ul class="pagination justify-content-center">
+          {% if page_obj.has_previous %}
+          <li class="page-item">
+            <a
+              class="page-link"
+              href="?page={{ page_obj.previous_page_number }}"
+              >Previous</a
+            >
+          </li>
+          {% else %}
+          <li class="page-item disabled">
+            <span class="page-link">Previous</span>
+          </li>
+          {% endif %} {% for num in page_obj.paginator.page_range %}
+          <li
+            class="page-item {% if page_obj.number == num %}active{% endif %}"
+          >
+            <a class="page-link" href="?page={{ num }}">{{ num }}</a>
+          </li>
+          {% endfor %} {% if page_obj.has_next %}
+          <li class="page-item">
+            <a class="page-link" href="?page={{ page_obj.next_page_number }}"
+              >Next</a
+            >
+          </li>
+          {% else %}
+          <li class="page-item disabled">
+            <span class="page-link">Next</span>
+          </li>
+          {% endif %}
+        </ul>
+      </nav>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% endblock %} {% block extra_js %}
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    // Update countdowns
+    function updateCountdowns() {
+      document.querySelectorAll(".countdown").forEach(function (el) {
+        const expiresAt = new Date(el.dataset.expires);
+        const now = new Date();
+        const diff = expiresAt - now;
+
+        if (diff <= 0) {
+          el.textContent = "Expired";
+          el.classList.add("text-danger");
+          // Disable buttons for this row
+          const row = el.closest("tr");
+          if (row) {
+            row
+              .querySelectorAll(".approval-btn")
+              .forEach((btn) => (btn.disabled = true));
+          }
+        } else {
+          const minutes = Math.floor(diff / 60000);
+          const seconds = Math.floor((diff % 60000) / 1000);
+          el.textContent = `${minutes}m ${seconds}s`;
+        }
+      });
+    }
+
+    setInterval(updateCountdowns, 1000);
+    updateCountdowns();
+
+    // Handle approval buttons
+    document.querySelectorAll(".approval-btn").forEach(function (button) {
+      button.addEventListener("click", function () {
+        const gatepassId = this.dataset.gatepassId;
+        const action = this.dataset.action;
+        const row = document.getElementById(`request-${gatepassId}`);
+
+        // Disable buttons while processing
+        row
+          .querySelectorAll(".approval-btn")
+          .forEach((btn) => (btn.disabled = true));
+
+        fetch(`/parent/approve/${gatepassId}/`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "X-CSRFToken": getCookie("csrftoken"),
+          },
+          body: `action=${action}`,
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.success) {
+              // Update the row to show new status
+              const statusCell = row.cells[5];
+              statusCell.innerHTML = `<span class="badge bg-${data.status_color}">${data.new_status}</span>`;
+
+              // Remove action buttons
+              row.cells[6].innerHTML = "";
+
+              // Show success message
+              showAlert("success", data.message);
+            } else {
+              // Re-enable buttons on failure
+              row
+                .querySelectorAll(".approval-btn")
+                .forEach((btn) => (btn.disabled = false));
+              showAlert("danger", data.message);
+            }
+          })
+          .catch((error) => {
+            console.error("Error:", error);
+            // Re-enable buttons on error
+            row
+              .querySelectorAll(".approval-btn")
+              .forEach((btn) => (btn.disabled = false));
+            showAlert(
+              "danger",
+              "An error occurred while processing your request"
+            );
+          });
+      });
+    });
+
+    // Helper function to get CSRF token
+    function getCookie(name) {
+      let cookieValue = null;
+      if (document.cookie && document.cookie !== "") {
+        const cookies = document.cookie.split(";");
+        for (let i = 0; i < cookies.length; i++) {
+          const cookie = cookies[i].trim();
+          if (cookie.substring(0, name.length + 1) === name + "=") {
+            cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+            break;
+          }
+        }
+      }
+      return cookieValue;
+    }
+
+    // Helper function to show alerts
+    function showAlert(type, message) {
+      const alertDiv = document.createElement("div");
+      alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+      alertDiv.role = "alert";
+      alertDiv.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        `;
+
+      const container = document.querySelector(".container");
+      container.insertBefore(alertDiv, container.firstChild);
+
+      // Auto-dismiss after 5 seconds
+      setTimeout(() => {
+        alertDiv.remove();
+      }, 5000);
+    }
+  });
+</script>
+{% endblock %}

@@ -48,45 +48,108 @@ class Gatepass(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name="gatepasses")
-    from_time = models.DateTimeField(default=timezone.now)
-    to_time = models.DateTimeField(default=timezone.now)
+    purpose = models.CharField(max_length=255)
     destination = models.CharField(max_length=255)
-    purpose = models.CharField(max_length=255, blank=True)
+    from_time = models.DateTimeField()
+    to_time = models.DateTimeField()
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="PENDING_PARENT")
     created_at = models.DateTimeField(auto_now_add=True)
-    # Gatepass request expires in 1 hour if not approved/rejected
-    request_expires_at = models.DateTimeField(blank=True, null=True)
+    request_expires_at = models.DateTimeField(null=True, blank=True)
     actual_exit_time = models.DateTimeField(null=True, blank=True)
     actual_entry_time = models.DateTimeField(null=True, blank=True)
-    audit = models.JSONField(default=list, blank=True)  # list of events
+    audit = models.JSONField(default=list, blank=True)
 
     def save(self, *args, **kwargs):
-        # default expiry: 1 hour after creation if not set
-        if not self.request_expires_at:
+        # Set request expiry if not set and status is PENDING_PARENT
+        if not self.request_expires_at and self.status == "PENDING_PARENT":
             self.request_expires_at = timezone.now() + timezone.timedelta(hours=1)
         super().save(*args, **kwargs)
 
-    def __str__(self):
-        return f"{self.student} - {self.destination} ({self.status})"
+    def send_approval_email(self):
+        from django.core.mail import send_mail
+        from django.conf import settings
+        from django.urls import reverse
+
+        student_name = self.student.profile.user.get_full_name() or self.student.profile.user.username
+        
+        # Create approval token
+        token = ApprovalToken.objects.create(
+            gatepass=self,
+            expires_at=self.request_expires_at
+        )
+
+        for parent in self.student.parents.all():
+            subject = f"Gatepass Request from {student_name}"
+            message = f"""
+Dear {parent.name},
+
+Your child, {student_name}, has requested a gatepass with the following details:
+
+Destination: {self.destination}
+Purpose: {self.purpose}
+From: {timezone.localtime(self.from_time).strftime('%d %b %Y, %I:%M %p')}
+To: {timezone.localtime(self.to_time).strftime('%d %b %Y, %I:%M %p')}
+
+To approve or reject this request, please click one of these links:
+
+Approve: {settings.SITE_URL}{reverse('approval-action', kwargs={'token': token.token, 'action': 'approve'})}
+Reject: {settings.SITE_URL}{reverse('approval-action', kwargs={'token': token.token, 'action': 'reject'})}
+
+This approval link will expire in {timezone.timedelta(hours=1)} hours.
+
+Best regards,
+Gatepass System
+"""
+            try:
+                send_mail(
+                    subject,
+                    message,
+                    settings.DEFAULT_FROM_EMAIL,
+                    [parent.email],
+                    fail_silently=False,
+                )
+            except Exception as e:
+                print(f"Failed to send email to {parent.email}: {str(e)}")
+
+    def get_status_color(self):
+        return {
+            'PENDING_PARENT': 'warning',
+            'PENDING_WARDEN': 'info',
+            'APPROVED': 'success',
+            'REJECTED': 'danger',
+            'EXPIRED': 'secondary',
+        }.get(self.status, 'primary')
 
 
-class Approval(models.Model):
-    STATUS_CHOICES = [
-        ("PENDING", "Pending"),
-        ("APPROVED", "Approved"),
-        ("REJECTED", "Rejected"),
-    ]
-    gatepass = models.ForeignKey(Gatepass, on_delete=models.CASCADE, related_name="approvals")
-    parent = models.ForeignKey(Parent, on_delete=models.CASCADE)
-    order = models.PositiveIntegerField(default=0)  # sequential approval
-    token_approve = models.UUIDField(default=uuid.uuid4, editable=False)
-    token_reject = models.UUIDField(default=uuid.uuid4, editable=False)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="PENDING")
-    responded_at = models.DateTimeField(null=True, blank=True)
+class ApprovalToken(models.Model):
+    token = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    gatepass = models.ForeignKey(Gatepass, on_delete=models.CASCADE, related_name='approval_tokens')
+    parent = models.ForeignKey(Parent, on_delete=models.CASCADE, related_name='approval_tokens')
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+    used = models.BooleanField(default=False)
+    action_taken = models.CharField(max_length=10, choices=[('approve', 'Approved'), ('reject', 'Rejected')], null=True, blank=True)
+
+    @property
+    def is_valid(self):
+        return not self.used and self.expires_at > timezone.now()
+
+    def use_token(self, action):
+        if self.is_valid and action in ['approve', 'reject']:
+            self.used = True
+            self.used_at = timezone.now()
+            self.action_taken = action
+            self.save()
+            return True
+        return False
+
+    def save(self, *args, **kwargs):
+        if not self.expires_at:
+            # Token expires in 1 hour by default (same as gatepass request)
+            self.expires_at = timezone.now() + timezone.timedelta(hours=1)
+        super().save(*args, **kwargs)
 
     class Meta:
-        unique_together = ("gatepass", "parent")
-        ordering = ["order"]
+        ordering = ['-created_at']
 
-    def __str__(self):
-        return f"Approval: {self.gatepass.id} - {self.parent.name} ({self.status})"

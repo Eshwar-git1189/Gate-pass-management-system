@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Student, Parent, Gatepass, Approval, Profile
+from .models import Student, Parent, Gatepass, Profile, ApprovalToken
 
 @admin.register(Student)
 class StudentAdmin(admin.ModelAdmin):
@@ -27,10 +27,10 @@ class GatepassAdmin(admin.ModelAdmin):
     list_display = ('student', 'destination', 'status', 'from_time', 'to_time', 'request_expires_at')
     list_filter = ('status',)
 
-@admin.register(Approval)
-class ApprovalAdmin(admin.ModelAdmin):
-    list_display = ('gatepass', 'parent', 'status', 'order', 'responded_at')
-    list_filter = ('status',)
-    search_fields = ('gatepass__student__name', 'parent__name')
+@admin.register(ApprovalToken)
+class ApprovalTokenAdmin(admin.ModelAdmin):
+    list_display = ('token', 'gatepass', 'parent', 'created_at', 'expires_at', 'used', 'action_taken')
+    list_filter = ('used', 'action_taken')
+    search_fields = ('gatepass__student__roll_no', 'parent__name')
 
 admin.site.register(Profile)

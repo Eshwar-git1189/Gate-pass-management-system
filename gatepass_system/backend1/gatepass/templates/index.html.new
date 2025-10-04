@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}
+Welcome - Gatepass System
+{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center text-center">
+        <div class="col-md-8">
+            <h1 class="display-4 mb-4">Welcome to Gatepass System</h1>
+            <p class="lead mb-4">A secure and efficient way to manage student gate passes</p>
+            
+            {% if not user.is_authenticated %}
+            <div class="d-grid gap-3 d-sm-flex justify-content-sm-center mb-5">
+                <a href="{% url 'login' %}" class="btn btn-primary btn-lg px-4 me-sm-3">Login</a>
+            </div>
+            {% else %}
+                {% if user.profile.user_type == 'STUDENT' %}
+                    <div class="d-grid gap-3 d-sm-flex justify-content-sm-center mb-5">
+                        <a href="{% url 'student-request' %}" class="btn btn-primary btn-lg px-4 me-sm-3">Request Gatepass</a>
+                        <a href="{% url 'student-gatepass-list' %}" class="btn btn-outline-secondary btn-lg px-4">My Gatepasses</a>
+                    </div>
+                {% elif user.profile.user_type == 'WARDEN' %}
+                    <div class="d-grid gap-3 d-sm-flex justify-content-sm-center mb-5">
+                        <a href="{% url 'warden-dashboard' %}" class="btn btn-primary btn-lg px-4">Warden Dashboard</a>
+                    </div>
+                {% elif user.profile.user_type == 'SECURITY' %}
+                    <div class="d-grid gap-3 d-sm-flex justify-content-sm-center mb-5">
+                        <a href="{% url 'security-dashboard' %}" class="btn btn-primary btn-lg px-4">Security Dashboard</a>
+                    </div>
+                {% endif %}
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="row mt-5">
+        <div class="col-md-4">
+            <div class="card h-100 shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title">For Students</h5>
+                    <p class="card-text">Request gate passes easily and track their status in real-time.</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card h-100 shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title">For Parents</h5>
+                    <p class="card-text">Approve or reject gate pass requests through secure email links.</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card h-100 shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title">For Staff</h5>
+                    <p class="card-text">Efficiently manage and monitor student movements with our dashboard.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

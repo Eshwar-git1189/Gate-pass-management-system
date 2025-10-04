@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Student, Parent, Gatepass, Approval
+from .models import Student, Parent, Gatepass, ApprovalToken
 
 class ParentSerializer(serializers.ModelSerializer):
     class Meta:
@@ -13,16 +13,16 @@ class StudentSerializer(serializers.ModelSerializer):
         model = Student
         fields = "__all__"
 
-class ApprovalSerializer(serializers.ModelSerializer):
+class ApprovalTokenSerializer(serializers.ModelSerializer):
     parent = ParentSerializer(read_only=True)
 
     class Meta:
-        model = Approval
-        fields = "__all__"
+        model = ApprovalToken
+        fields = ['token', 'gatepass', 'parent', 'created_at', 'expires_at', 'used', 'action_taken']
 
 class GatepassSerializer(serializers.ModelSerializer):
     student = StudentSerializer(read_only=True)
-    approvals = ApprovalSerializer(many=True, read_only=True)
+    approval_tokens = ApprovalTokenSerializer(many=True, read_only=True)
 
     class Meta:
         model = Gatepass

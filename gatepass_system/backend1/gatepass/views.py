@@ -3,12 +3,20 @@ from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404, render, redirect
-from django.views.generic import View
-from .models import Student, Parent, Gatepass, Approval
-from .serializers import StudentSerializer, ParentSerializer, GatepassSerializer, ApprovalSerializer
+from django.views.generic import View, TemplateView
+from .models import Student, Parent, Gatepass, ApprovalToken
+from .serializers import StudentSerializer, ParentSerializer, GatepassSerializer
 from django.core.mail import send_mail
 from django.urls import reverse
 from django.utils import timezone
+from django.contrib.auth import logout
+from django.contrib.auth.views import LogoutView
+
+class IndexView(TemplateView):
+    template_name = 'index.html'
+
+class CustomLogoutView(LogoutView):
+    next_page = '/'  # Redirect to home page after logout
 
 class StudentListCreateAPIView(generics.ListCreateAPIView):
     queryset = Student.objects.all()
@@ -18,19 +26,25 @@ class StudentListCreateAPIView(generics.ListCreateAPIView):
 from django.contrib.auth.views import LoginView
 
 class UserLoginView(LoginView):
-    template_name = 'login.html'
+    template_name = 'registration/login.html'
 
 from django.shortcuts import redirect
 
 def redirect_after_login(request):
     if request.user.is_authenticated:
-        if request.user.profile.user_type == 'STUDENT':
-            return redirect('student-gatepass-list')
-        elif request.user.profile.user_type == 'WARDEN':
-            return redirect('warden-dashboard')
-        elif request.user.profile.user_type == 'SECURITY':
-            return redirect('security-dashboard')
-    # Redirect to a default page if user is not authenticated or has no role
+        try:
+            user_type = request.user.profile.user_type
+            if user_type == 'STUDENT':
+                return redirect('student-gatepass-list')
+            elif user_type == 'WARDEN':
+                return redirect('warden-dashboard')
+            elif user_type == 'PARENT':
+                return redirect('parent-dashboard')
+            elif user_type == 'SECURITY':
+                return redirect('security-dashboard')
+        except AttributeError:
+            # If user doesn't have a profile
+            return redirect('login')
     return redirect('login')
 
 class IsSecurity(BasePermission):
@@ -130,66 +144,51 @@ class WardenDashboardView(View):
 # ----- Student Views -----
 class StudentRequestView(View):
     def get(self, request):
+        if not hasattr(request.user, 'profile') or request.user.profile.user_type != 'STUDENT':
+            return redirect('login')
         return render(request, 'student_request.html')
 
     def post(self, request):
-        student = request.user.profile.student
-        gatepass = Gatepass.objects.create(
-            student=student,
-            destination=request.POST['destination'],
-            purpose=request.POST['purpose'],
-            from_time=request.POST['from_time'],
-            to_time=request.POST['to_time'],
-        )
+        if not hasattr(request.user, 'profile') or request.user.profile.user_type != 'STUDENT':
+            return redirect('login')
 
-        for i, parent in enumerate(gatepass.student.parents.all(), start=1):
-            approval = Approval.objects.create(
-                gatepass=gatepass,
-                parent=parent,
-                order=i
+        try:
+            student = request.user.profile.student
+            from_time = timezone.datetime.strptime(request.POST['from_time'], '%Y-%m-%dT%H:%M')
+            to_time = timezone.datetime.strptime(request.POST['to_time'], '%Y-%m-%dT%H:%M')
+
+            # Make times timezone-aware
+            from_time = timezone.make_aware(from_time)
+            to_time = timezone.make_aware(to_time)
+
+            # Validate times
+            if from_time >= to_time:
+                messages.error(request, "From time must be before to time")
+                return redirect('student-request')
+            
+            if from_time < timezone.now():
+                messages.error(request, "From time must be in the future")
+                return redirect('student-request')
+
+            # Create gatepass
+            gatepass = Gatepass.objects.create(
+                student=student,
+                destination=request.POST['destination'],
+                purpose=request.POST['purpose'],
+                from_time=from_time,
+                to_time=to_time,
+                status='PENDING_PARENT'
             )
-            if parent.email:
-                self.send_approval_email(approval, request)
+
+            # Send approval email to parents
+            gatepass.send_approval_email()
+            messages.success(request, "Gatepass request submitted successfully. Your parents will be notified.")
+
+        except Exception as e:
+            messages.error(request, f"Error submitting request: {str(e)}")
+            return redirect('student-request')
 
         return redirect('student-gatepass-list')
-
-    def send_approval_email(self, approval, request):
-        """
-        Constructs and sends an approval request email to a parent.
-        """
-        gatepass = approval.gatepass
-        student_name = gatepass.student.profile.user.get_full_name()
-        
-        # Build the unique approval/rejection URLs
-        # In production, you would use settings to get the domain
-        base_url = request.build_absolute_uri('/')[:-1] # http://127.0.0.1:8000
-        approve_url = base_url + reverse('approval-action', kwargs={'token': approval.token_approve, 'action': 'approve'})
-        reject_url = base_url + reverse('approval-action', kwargs={'token': approval.token_reject, 'action': 'reject'})
-
-        subject = f"Gatepass Request for {student_name}"
-        message = f"""
-Hi {approval.parent.name},
-
-Your child, {student_name}, has requested a gatepass with the following details:
-
-Destination: {gatepass.destination}
-Purpose: {gatepass.purpose}
-From: {gatepass.from_time.strftime('%d %b %Y, %I:%M %p')}
-To: {gatepass.to_time.strftime('%d %b %Y, %I:%M %p')}
-
-Please click one of the links below to respond:
-Approve: {approve_url}
-Reject: {reject_url}
-
-This request will expire in one hour.
-"""
-        send_mail(
-            subject,
-            message,
-            'gatepass-system@yourcollege.edu',  # From email
-            [approval.parent.email],          # To email
-            fail_silently=False,
-        )
 
 class StudentGatepassListView(View):
     def get(self, request):
@@ -204,20 +203,18 @@ class GatepassListCreateAPIView(generics.ListCreateAPIView):
     permission_classes = [IsAuthenticated] # Ensure only logged-in users can create
 
     def perform_create(self, serializer):
-        # Automatically associate the gatepass with the logged-in student.
-        # This is more secure and correct.
+        # Automatically associate the gatepass with the logged-in student
+        if not hasattr(self.request.user, 'profile') or self.request.user.profile.user_type != 'STUDENT':
+            raise serializers.ValidationError("Only students can create gatepass requests")
+            
         gatepass = serializer.save(student=self.request.user.profile.student)
-
-        # Create Approval objects for all parents in sequence
-        for i, parent in enumerate(gatepass.student.parents.all(), start=1):
-            approval = Approval.objects.create(
-                gatepass=gatepass,
-                parent=parent,
-                order=i
-            )
-            # If the parent has an email, send the notification
-            if parent.email:
-                self.send_approval_email(approval, self.request)
+        
+        try:
+            # Send approval emails
+            gatepass.send_approval_email()
+        except Exception as e:
+            # Log the error but don't fail the request
+            print(f"Error sending approval emails: {str(e)}")
 
 # ----- Approval APIs -----
 class ApprovalActionAPIView(APIView):
@@ -226,28 +223,57 @@ class ApprovalActionAPIView(APIView):
     """
     def get(self, request, token, action):
         try:
-            if action == "approve":
-                approval = get_object_or_404(Approval, token_approve=token)
-            elif action == "reject":
-                approval = get_object_or_404(Approval, token_reject=token)
+            approval_token = get_object_or_404(ApprovalToken, token=token)
+            
+            if not approval_token.is_valid:
+                return Response({"detail": "This approval link has expired or already been used."}, 
+                             status=status.HTTP_400_BAD_REQUEST)
+            
+            if action not in ['approve', 'reject']:
+                return Response({"detail": "Invalid action."}, 
+                             status=status.HTTP_400_BAD_REQUEST)
+                
+            # Use the token
+            success = approval_token.use_token(action)
+            if not success:
+                return Response({"detail": "Could not process approval action."}, 
+                             status=status.HTTP_400_BAD_REQUEST)
+
+            # Update gatepass status
+            gatepass = approval_token.gatepass
+            if action == 'reject':
+                gatepass.status = "REJECTED"
             else:
-                return Response({"detail": "Invalid action."}, status=status.HTTP_400_BAD_REQUEST)
-        except Approval.DoesNotExist:
-            return Response({"detail": "Invalid token."}, status=status.HTTP_404_NOT_FOUND)
+                # Check if all parents have approved
+                all_approved = True
+                for parent in gatepass.student.parents.all():
+                    latest_token = parent.approval_tokens.filter(
+                        gatepass=gatepass,
+                        used=True
+                    ).order_by('-created_at').first()
+                    
+                    if not latest_token or latest_token.action_taken != 'approve':
+                        all_approved = False
+                        break
+                
+                if all_approved:
+                    gatepass.status = "PENDING_WARDEN"
+                    
+            gatepass.save()
+            
+            # Record the action in audit log
+            gatepass.audit.append({
+                "action": f"Parent {action}d",
+                "parent": approval_token.parent.name,
+                "timestamp": timezone.now().isoformat(),
+            })
+            gatepass.save()
 
-        if approval.status != "PENDING":
-            return Response({"detail": "Already responded."}, status=status.HTTP_400_BAD_REQUEST)
-
-        approval.status = "APPROVED" if action == "approve" else "REJECTED"
-        approval.responded_at = timezone.now()
-        approval.save()
-
-        # Update gatepass status
-        gatepass = approval.gatepass
-        if approval.status == "REJECTED":
-            gatepass.status = "REJECTED"
-        elif all(a.status == "APPROVED" for a in gatepass.approvals.all()):
-            gatepass.status = "PENDING_WARDEN_APPROVAL"
-        gatepass.save()
-
-        return Response({"detail": f"Gatepass {action}ed successfully."})
+            return Response({
+                "detail": f"Gatepass request {action}ed successfully.",
+                "status": gatepass.status
+            })
+        except ApprovalToken.DoesNotExist:
+            return Response({"detail": "Invalid approval token."}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
