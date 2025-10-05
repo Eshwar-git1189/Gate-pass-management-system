@@ -27,6 +27,19 @@
       .stats-card:hover {
         transform: translateY(-5px);
       }
+      .btn-lg {
+        transition: all 0.3s ease;
+      }
+      .btn-lg:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      }
+      .btn-info {
+        color: white;
+      }
+      .btn-info:hover {
+        color: white;
+      }
     </style>
     {% block extra_css %}{% endblock %}
   </head>
@@ -34,7 +47,7 @@
     <!-- Navigation -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
       <div class="container">
-        <a class="navbar-brand" href="/">Gatepass System</a>
+        <a class="navbar-brand" href="/">Gatepass Management System</a>
         <button
           class="navbar-toggler"
           type="button"
@@ -91,8 +104,40 @@
               </ul>
             </li>
             {% else %}
-            <li class="nav-item">
-              <a class="nav-link" href="{% url 'login' %}">Login</a>
+            <li class="nav-item dropdown">
+              <a
+                class="nav-link dropdown-toggle"
+                href="#"
+                id="loginDropdown"
+                role="button"
+                data-bs-toggle="dropdown"
+              >
+                Login
+              </a>
+              <ul class="dropdown-menu dropdown-menu-end">
+                <li><hr class="dropdown-divider"></li>
+                <li>
+                  <a class="dropdown-item" href="/login/?role=student"
+                    >🚀 Student Login</a
+                  >
+                </li>
+                <li>
+                  <a class="dropdown-item" href="/login/?role=warden"
+                    >🏫 Warden Login</a
+                  >
+                </li>
+                <li>
+                  <a class="dropdown-item" href="/login/?role=security"
+                    >🔒 Security Login</a
+                  >
+                </li>
+                <li><hr class="dropdown-divider"></li>
+                <li>
+                  <a class="dropdown-item" href="/login/"
+                    >🔑 General Login</a
+                  >
+                </li>
+              </ul>
             </li>
             {% endif %}
           </ul>
@@ -122,7 +167,7 @@
     <footer class="footer mt-auto py-3 bg-light">
       <div class="container text-center">
         <span class="text-muted"
-          >© {% now "Y" %} Gatepass System. All rights reserved.</span
+          >© {% now "Y" %} Gatepass Management System. All rights reserved.</span
         >
       </div>
     </footer>

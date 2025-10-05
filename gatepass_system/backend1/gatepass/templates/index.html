@@ -1,19 +1,52 @@
-{% extends "base.html" %} {% block title %}Welcome - Gatepass System{% endblock
-title %} {% block content %}
+{% extends "base.html" %}
+{% block title %}Welcome - Gatepass System{% endblock title %}
+{% block content %}
 <div class="container mt-5">
   <div class="row justify-content-center text-center">
     <div class="col-md-8">
-      <h1 class="display-4 mb-4">Welcome to Gatepass System</h1>
+      <h1 class="display-4 mb-4">Gatepass Management System</h1>
       <p class="lead mb-4">
         A secure and efficient way to manage student gate passes
       </p>
 
       {% if not user.is_authenticated %}
-      <div class="d-grid gap-3 d-sm-flex justify-content-sm-center mb-5">
-        <a href="{% url 'login' %}" class="btn btn-primary btn-lg px-4 me-sm-3"
-          >Login</a
-        >
+      <div class="text-center mb-4">
+        <p class="lead mb-3">Select your role to log in:</p>
       </div>
+      <div class="d-grid gap-3 d-sm-flex justify-content-sm-center mb-5">
+        <div class="btn-group" role="group">
+          <a
+            href="/login/?role=student"
+            class="btn btn-primary btn-lg px-4 me-2"
+            >Student Login</a
+          >
+          <a
+            href="/login/?role=warden"
+            class="btn btn-success btn-lg px-4 me-2"
+            >Warden Login</a
+          >
+          <a
+            href="/login/?role=security"
+            class="btn btn-info btn-lg px-4 me-2"
+            >Security Login</a
+          >
+          <a
+            href="/login/"
+            class="btn btn-secondary btn-lg px-4"
+            >General Login</a
+          >
+        </div>
+      </div>
+
+      <div class="row mt-5">
+        <div class="col-md-12">
+          <div class="alert alert-info" role="alert">
+            <i class="fas fa-info-circle"></i>
+            <strong>Note:</strong> Parents will receive approval links directly via email — no login required.
+          </div>
+        </div>
+      </div>
+
       {% else %} {% if user.profile.user_type == 'STUDENT' %}
       <div class="d-grid gap-3 d-sm-flex justify-content-sm-center mb-5">
         <a

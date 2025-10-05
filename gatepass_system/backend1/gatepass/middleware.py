@@ -9,7 +9,7 @@ class GatepassExpiryMiddleware:
         # Check and expire gatepasses before processing the request
         now = timezone.now()
         Gatepass.objects.filter(
-            status='PENDING',
+            status='PENDING_PARENT',
             request_expires_at__lte=now
         ).update(
             status='EXPIRED'

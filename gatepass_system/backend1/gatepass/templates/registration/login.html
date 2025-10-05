@@ -44,6 +44,20 @@
                 required
               />
             </div>
+            <div class="mb-3">
+              <label for="id_user_type" class="form-label">User Type</label>
+              <select
+                name="user_type"
+                id="id_user_type"
+                class="form-select"
+                required
+              >
+                <option value="" selected disabled>Select your role</option>
+                <option value="STUDENT" {% if selected_role == 'STUDENT' %}selected{% endif %}>Student</option>
+                <option value="WARDEN" {% if selected_role == 'WARDEN' %}selected{% endif %}>Warden</option>
+                <option value="SECURITY" {% if selected_role == 'SECURITY' %}selected{% endif %}>Security</option>
+              </select>
+            </div>
             <div class="d-grid gap-2">
               <button class="btn btn-primary" type="submit">Login</button>
             </div>

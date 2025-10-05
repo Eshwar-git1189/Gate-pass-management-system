@@ -72,13 +72,13 @@ class Gatepass(models.Model):
 
         student_name = self.student.profile.user.get_full_name() or self.student.profile.user.username
         
-        # Create approval token
-        token = ApprovalToken.objects.create(
-            gatepass=self,
-            expires_at=self.request_expires_at
-        )
-
         for parent in self.student.parents.all():
+            # Create approval token for each parent
+            token = ApprovalToken.objects.create(
+                gatepass=self,
+                parent=parent,
+                expires_at=self.request_expires_at
+            )
             subject = f"Gatepass Request from {student_name}"
             message = f"""
 Dear {parent.name},
@@ -152,4 +152,3 @@ class ApprovalToken(models.Model):
 
     class Meta:
         ordering = ['-created_at']
-
